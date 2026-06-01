@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.sqlite3
+
+# Ambientes Virtuais
+venv/
+env/
+
+# Logs e Media
+logs/
+media/
+
+# Ficheiros de Ambiente (NUNCA ENVIAR SENHAS!)
+.env
+
+# Docker e Base de Dados
+postgres_data/
