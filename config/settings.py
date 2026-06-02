@@ -262,7 +262,12 @@ LOGGING = {
     },
 }
 
-# config/settings.py
 
 # Diz ao Django para usar o nosso modelo de Utilizador customizado
 AUTH_USER_MODEL = 'core.User'
+
+# Substitua 'erp-compras-backend-production.up.railway.app' pelo domínio exato que aparece no seu browser
+CSRF_TRUSTED_ORIGINS = [
+    'https://erp-compras-backend-production.up.railway.app',
+    'https://*.up.railway.app', # Isto libera qualquer subdomínio do Railway
+]
