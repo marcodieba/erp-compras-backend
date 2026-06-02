@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'channels',
     'simple_history',
+    'corsheaders',
     
     # Apps do ERP
     'apps.core',
@@ -63,6 +64,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -271,3 +273,6 @@ CSRF_TRUSTED_ORIGINS = [
     'https://erp-compras-backend-production.up.railway.app',
     'https://*.up.railway.app', # Isto libera qualquer subdomínio do Railway
 ]
+
+# Permite que qualquer frontend se conecte à sua API (Ideal para a fase de testes/desenvolvimento)
+CORS_ALLOW_ALL_ORIGINS = True
