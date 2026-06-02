@@ -205,6 +205,13 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
+
+# Garante que a pasta 'logs' existe no servidor (evita o crash no Railway)
+LOGS_DIR = os.path.join(BASE_DIR, 'logs')
+if not os.path.exists(LOGS_DIR):
+    os.makedirs(LOGS_DIR)
+
+
 # --- LOGS CENTRALIZADOS (Auditoria Técnica) ---
 LOGGING = {
     'version': 1,
