@@ -18,28 +18,31 @@ class PedidoCompra(models.Model):
         ('ENTREGUE', 'Entregue')
     ]
     
+    # Atualizado para bater exatamente com as opções do Frontend
     PRIORIDADE_CHOICES = [
-        ('NORMAL', 'Normal (24h)'),
-        ('ALTA', 'Alta (8h)'),
-        ('EMERGENCIAL', 'Emergencial (2h)')
+        ('BAIXA', 'Baixa'),
+        ('MEDIA', 'Média'),
+        ('ALTA', 'Alta'),
+        ('URGENTE', 'Urgente')
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    numero = models.PositiveIntegerField(unique=True, editable=False) # Sequencial automático
+    numero = models.PositiveIntegerField(unique=True, editable=False)
+    titulo = models.CharField(max_length=200) # NOVO: Para listagens rápidas
     solicitante = models.ForeignKey(User, on_delete=models.PROTECT, related_name='pedidos_solicitados')
     comprador = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='pedidos_comprados')
     setor = models.ForeignKey(Setor, on_delete=models.PROTECT)
     centro_custo = models.ForeignKey(CentroCusto, on_delete=models.PROTECT)
-    prioridade = models.CharField(max_length=15, choices=PRIORIDADE_CHOICES, default='NORMAL')
+    prioridade = models.CharField(max_length=15, choices=PRIORIDADE_CHOICES, default='MEDIA')
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='CRIADO')
     justificativa = models.TextField()
+    observacoes = models.TextField(blank=True, null=True) # NOVO: Notas extras do pedido
     data_criacao = models.DateTimeField(auto_now_add=True)
     sla_vencimento = models.DateTimeField(null=True, blank=True)
     
     history = HistoricalRecords()
 
     def save(self, *args, **kwargs):
-        # Se o pedido ainda não tem número (está a ser criado pela primeira vez)
         if not self.numero:
             ultimo_pedido = PedidoCompra.objects.order_by('-numero').first()
             if ultimo_pedido:
@@ -53,11 +56,12 @@ class PedidoCompra(models.Model):
 
 class ItemPedido(models.Model):
     pedido = models.ForeignKey(PedidoCompra, on_delete=models.CASCADE, related_name='itens')
-    codigo_erp = models.CharField(max_length=50, blank=True) # Para integração futura
-    descricao = models.CharField(max_length=255) # Ex: Sulfato de Cromo Basico
+    codigo_erp = models.CharField(max_length=50, blank=True)
+    descricao = models.CharField(max_length=255)
     quantidade = models.DecimalField(max_digits=10, decimal_places=3)
-    unidade = models.CharField(max_length=10) # Ex: KG, UN, LT
-    maquina_aplicacao = models.CharField(max_length=100, blank=True) # Ex: Fulão 03
+    unidade = models.CharField(max_length=10)
+    maquina_aplicacao = models.CharField(max_length=100, blank=True)
+    observacao = models.CharField(max_length=255, blank=True, null=True) # NOVO: Para bater com o form de itens
     prazo_desejado = models.DateField()
 
 class Cotacao(models.Model):
