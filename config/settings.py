@@ -27,7 +27,11 @@ SECRET_KEY = 'django-insecure-wje(b5!gyi%^4p=6m&x)ujg==olvek^c(rayo(xx1xh7y(kx5s
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# config/settings.py
+
+# Lê a variável do Railway. Se não encontrar, libera tudo (*) por padrão em produção,
+# ou aceita localhost/127.0.0.1 para você testar localmente.
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1 *").replace(",", " ").split()
 
 
 # Application definition
