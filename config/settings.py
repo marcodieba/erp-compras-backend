@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-
+from datetime import timedelta
 from pathlib import Path
 import os
 import dj_database_url
@@ -276,3 +276,9 @@ CSRF_TRUSTED_ORIGINS = [
 
 # Permite que qualquer frontend se conecte à sua API (Ideal para a fase de testes/desenvolvimento)
 CORS_ALLOW_ALL_ORIGINS = True
+
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1), # Token dura 1 dia
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+}
