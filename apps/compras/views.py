@@ -24,29 +24,26 @@ from django.db.models import Count, Sum
 
 
 
-
-
-
-
 class PedidoViewSet(viewsets.ModelViewSet):
     queryset = PedidoCompra.objects.all()
     serializer_class = PedidoSerializer
-    permission_classes = [IsAuthenticated] # Controle refinado via Custom Permissions no futuro
+    permission_classes = [IsAuthenticated] 
     
-    def perform_create(self, serializer):
-        # O Service cuida da regra de negócio (SLA, Notificações)
-        PedidoService.criar_pedido(serializer.validated_data, self.request.user)
-
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-
-    # Filtros exatos
     filterset_fields = ['status', 'prioridade', 'setor']
-    
-    # Busca textual (Ex: /pedidos/?search=urgente)
     search_fields = ['numero', 'justificativa', 'observacoes']
-    
-    # Ordenação (Ex: /pedidos/?ordering=-data_criacao)
     ordering_fields = ['data_criacao', 'sla_vencimento', 'prioridade']
+
+    # A CORREÇÃO ESTÁ AQUI NESTA FUNÇÃO:
+    def perform_create(self, serializer):
+        # 1. Deixamos o Serializer trabalhar! Ele vai usar aquela função create() 
+        # que fizemos no passo anterior para guardar o pedido e os itens.
+        pedido = serializer.save(solicitante=self.request.user)
+        
+        # 2. Se o seu PedidoService tem lógica de enviar emails ou calcular SLA,
+        # você deve chamá-lo APÓS o pedido já estar guardado na base de dados:
+        # (Comentei a linha abaixo para não dar erro caso o service precise de ajustes)
+        # PedidoService.processar_novo_pedido(pedido)
 
     @action(detail=True, methods=['post'])
     def aprovar(self, request, pk=None):
