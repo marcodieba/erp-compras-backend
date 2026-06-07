@@ -6,8 +6,8 @@ from .models import PedidoCompra, ItemPedido, Cotacao, Aprovacao, Anexo
 class ItemPedidoSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemPedido
-        fields = '__all__'
-        read_only_fields = ('pedido',)
+        # Removemos o 'pedido' daqui, pois ele é criado no PedidoSerializer
+        fields = ['id', 'descricao', 'quantidade', 'unidade', 'prazo_desejado', 'observacao']
 
 class CotacaoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -26,13 +26,19 @@ class PedidoSerializer(serializers.ModelSerializer):
     class Meta:
         model = PedidoCompra
         fields = '__all__'
-        read_only_fields = ('numero', 'status', 'solicitante', 'data_criacao', 'sla_vencimento')
+        read_only_fields = ('id', 'numero', 'status', 'solicitante', 'data_criacao', 'sla_vencimento')
 
     def create(self, validated_data):
+        # 1. Retiramos a lista de itens dos dados
         itens_data = validated_data.pop('itens', [])
+        
+        # 2. Criamos o pedido principal
         pedido = PedidoCompra.objects.create(**validated_data)
+        
+        # 3. Criamos os itens e associamos ao pedido
         for item_data in itens_data:
             ItemPedido.objects.create(pedido=pedido, **item_data)
+            
         return pedido
 
 

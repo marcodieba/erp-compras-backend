@@ -62,8 +62,11 @@ class CotacaoViewSet(viewsets.ModelViewSet):
     permission_classes = [IsComprador]
 
     def perform_create(self, serializer):
-        # Valida se o pedido já está fechado antes de aceitar nova cotação
-        pedido = serializer.validated_data['pedido']
+        # 1. Deixamos o Serializer gravar o pedido e os itens aninhados
+        pedido = serializer.save(solicitante=self.request.user)
+        # 2. Chamamos o Service para calcular o SLA e notificar os compradores!
+        PedidoService.processar_novo_pedido(pedido)
+        # pedido = serializer.validated_data['pedido']
         if pedido.status not in ['CRIADO', 'COTACAO', 'REVISAO']:
             raise ValidationError("Não é possível adicionar cotações a este pedido.")
         
