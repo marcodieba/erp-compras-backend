@@ -7,7 +7,14 @@ from .permissions import IsGerente # Apenas Admin/Gerente configuram a base
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsGerente]
+    
+    # CORREÇÃO: Nova regra dinâmica de permissões
+    def get_permissions(self):
+        # Se for apenas para ler (GET), qualquer utilizador autenticado tem permissão
+        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return [IsAuthenticated()]
+        # Se for para criar/editar/apagar (POST, PUT, DELETE), exige ser Gerente/Admin
+        return [IsGerente()]
 
 class SetorViewSet(viewsets.ModelViewSet):
     queryset = Setor.objects.all()
