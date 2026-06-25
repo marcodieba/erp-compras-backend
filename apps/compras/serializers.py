@@ -10,6 +10,14 @@ class ItemPedidoSerializer(serializers.ModelSerializer):
         fields = ['id', 'descricao', 'quantidade', 'unidade', 'prazo_desejado', 'observacao']
 
 class CotacaoSerializer(serializers.ModelSerializer):
+    # Avisamos a API que vamos receber um array de IDs dos itens
+    # Exemplo do que o frontend vai enviar: "itens": [1, 2, 5]
+    itens = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=ItemPedido.objects.all(),
+        required=False
+    )
+
     class Meta:
         model = Cotacao
         fields = '__all__'

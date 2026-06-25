@@ -61,12 +61,14 @@ class ItemPedido(models.Model):
     quantidade = models.DecimalField(max_digits=10, decimal_places=3)
     unidade = models.CharField(max_length=10)
     maquina_aplicacao = models.CharField(max_length=100, blank=True)
+    cotacao_vencedora = models.ForeignKey('Cotacao', null=True, blank=True, on_delete=models.SET_NULL, related_name='itens_ganhos')
     observacao = models.CharField(max_length=255, blank=True, null=True) # NOVO: Para bater com o form de itens
     prazo_desejado = models.DateField()
 
 class Cotacao(models.Model):
     pedido = models.ForeignKey(PedidoCompra, on_delete=models.CASCADE, related_name='cotacoes')
     fornecedor = models.ForeignKey('logistica.Fornecedor', on_delete=models.PROTECT)
+    itens = models.ManyToManyField('ItemPedido', related_name='cotacoes', blank=True)
     valor_total = models.DecimalField(max_digits=12, decimal_places=2)
     frete = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     prazo_entrega_dias = models.PositiveIntegerField()
