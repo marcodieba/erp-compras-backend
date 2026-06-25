@@ -56,23 +56,28 @@ class PedidoViewSet(viewsets.ModelViewSet):
 
 
 
+from rest_framework.exceptions import ValidationError
+
 class CotacaoViewSet(viewsets.ModelViewSet):
     queryset = Cotacao.objects.all()
     serializer_class = CotacaoSerializer
     permission_classes = [IsComprador]
 
     def perform_create(self, serializer):
-        # 1. Deixamos o Serializer gravar o pedido e os itens aninhados
-        pedido = serializer.save(solicitante=self.request.user)
-        # 2. Chamamos o Service para calcular o SLA e notificar os compradores!
-        PedidoService.processar_novo_pedido(pedido)
-        # pedido = serializer.validated_data['pedido']
+        # 1. Pega o pedido ao qual esta cotação pertence
+        pedido = serializer.validated_data.get('pedido')
+        
+        # 2. Valida se o pedido já está fechado antes de aceitar nova cotação
         if pedido.status not in ['CRIADO', 'COTACAO', 'REVISAO']:
             raise ValidationError("Não é possível adicionar cotações a este pedido.")
         
-        pedido.status = 'COTACAO'
-        pedido.save()
+        # 3. Salva a cotação no banco de dados (Cotação não tem campo solicitante!)
         serializer.save()
+        
+        # 4. Atualiza o status do pedido para informar que já está a ser orçamentado
+        if pedido.status != 'COTACAO':
+            pedido.status = 'COTACAO'
+            pedido.save(update_fields=['status'])
 
 class AprovacaoViewSet(viewsets.GenericViewSet):
     permission_classes = [IsGerente]
