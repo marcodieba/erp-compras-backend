@@ -7,7 +7,6 @@ from apps.notificacoes.services import NotificacaoService
 class PedidoService:
     @staticmethod
     def calcular_sla(prioridade):
-        # Mapeamento do tempo de SLA baseado na prioridade do Django
         horas = {
             'URGENTE': 2, 
             'ALTA': 8, 
@@ -19,7 +18,7 @@ class PedidoService:
 
     @staticmethod
     def processar_novo_pedido(pedido):
-        """Executa regras de negócio APÓS o pedido e os itens serem salvos."""
+        """Executa regras de negócio APÓS o pedido e os itens serem salvos no banco."""
         pedido.sla_vencimento = PedidoService.calcular_sla(pedido.prioridade)
         pedido.save(update_fields=['sla_vencimento']) 
 
@@ -48,20 +47,18 @@ class PedidoService:
         itens_pendentes = pedido.itens.filter(cotacao_vencedora__isnull=True).count()
         
         if itens_pendentes == 0:
-            # Todos os itens foram comprados! O pedido avança no fluxo.
             pedido.status = 'COMPRADO'
             pedido.save(update_fields=['status'])
-            NotificacaoService.notificar_usuario(
-                pedido.comprador, 
-                f"Pedido {pedido.numero} totalmente aprovado. Iniciar trâmites de compra com os fornecedores."
-            )
+            mensagem = f"Pedido {pedido.numero} totalmente aprovado. Iniciar trâmites de compra com os fornecedores."
         else:
-            # Ainda faltam itens. Devolve para o comprador terminar o trabalho.
             pedido.status = 'COTACAO'
             pedido.save(update_fields=['status'])
-            NotificacaoService.notificar_usuario(
-                pedido.comprador, 
-                f"Cotação parcial do Pedido {pedido.numero} aprovada. Faltam cotar {itens_pendentes} itens."
-            )
+            mensagem = f"Cotação parcial do Pedido {pedido.numero} aprovada. Faltam cotar {itens_pendentes} itens."
+            
+        # 5. O AIRBAG: Previne crash caso o pedido não tenha comprador (notifica todos)
+        if getattr(pedido, 'comprador', None):
+            NotificacaoService.notificar_usuario(pedido.comprador, mensagem)
+        else:
+            NotificacaoService.notificar_compradores(mensagem)
             
         return pedido

@@ -3,25 +3,22 @@ import csv
 import openpyxl
 from reportlab.pdfgen import canvas
 from django.utils import timezone
-
 from django.http import HttpResponse
 
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from .serializers import PedidoSerializer, CotacaoSerializer, AprovacaoSerializer
-from .services import PedidoService
-from .models import PedidoCompra, Cotacao, Aprovacao
+from rest_framework.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist # NOVO IMPORT AQUI PARA O AIRBAG
 
 from django_filters.rest_framework import DjangoFilterBackend
 from apps.core.permissions import IsGerente, IsComprador
 
-from .serializers import AnexoSerializer, ItemPedidoSerializer
-from .models import Anexo, ItemPedido
-
+from .serializers import PedidoSerializer, CotacaoSerializer, AprovacaoSerializer, AnexoSerializer, ItemPedidoSerializer
+from .services import PedidoService
+from .models import PedidoCompra, Cotacao, Aprovacao, Anexo, ItemPedido
 from django.db.models import Count, Sum
-
 
 
 class PedidoViewSet(viewsets.ModelViewSet):
@@ -34,29 +31,31 @@ class PedidoViewSet(viewsets.ModelViewSet):
     search_fields = ['numero', 'justificativa', 'observacoes']
     ordering_fields = ['data_criacao', 'sla_vencimento', 'prioridade']
 
-    # A CORREÇÃO ESTÁ AQUI NESTA FUNÇÃO:
     def perform_create(self, serializer):
-        # 1. Deixamos o Serializer trabalhar! Ele vai usar aquela função create() 
-        # que fizemos no passo anterior para guardar o pedido e os itens.
         pedido = serializer.save(solicitante=self.request.user)
-        
-        # 2. Se o seu PedidoService tem lógica de enviar emails ou calcular SLA,
-        # você deve chamá-lo APÓS o pedido já estar guardado na base de dados:
-        # (Comentei a linha abaixo para não dar erro caso o service precise de ajustes)
-        # PedidoService.processar_novo_pedido(pedido)
+        # Descomentado: Agora que está salvo, roda a regra de SLA e notificação
+        PedidoService.processar_novo_pedido(pedido)
 
     @action(detail=True, methods=['post'])
     def aprovar(self, request, pk=None):
         try:
-            cotacao_id = request.data.get('cotacao_vencedora_id')
+            # Pega o ID de forma flexível (caso o frontend envie com nome ligeiramente diferente)
+            cotacao_id = request.data.get('cotacao_vencedora_id') or request.data.get('cotacao_id')
+            
+            if not cotacao_id:
+                return Response({'erro': 'O ID da cotação não foi enviado na requisição.'}, status=status.HTTP_400_BAD_REQUEST)
+
             pedido = PedidoService.aprovar_pedido(pk, request.user, cotacao_id)
             return Response({'status': 'Pedido aprovado com sucesso', 'status_atual': pedido.status})
+            
+        except ObjectDoesNotExist:
+            return Response({'erro': 'O Pedido ou a Cotação indicada não foi encontrada.'}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as e:
             return Response({'erro': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            # Captura qualquer erro invisível e devolve como texto no Frontend
+            return Response({'erro': f'Erro interno no servidor: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-from rest_framework.exceptions import ValidationError
 
 class CotacaoViewSet(viewsets.ModelViewSet):
     queryset = Cotacao.objects.all()
@@ -64,20 +63,23 @@ class CotacaoViewSet(viewsets.ModelViewSet):
     permission_classes = [IsComprador]
 
     def perform_create(self, serializer):
-        # 1. Pega o pedido ao qual esta cotação pertence
         pedido = serializer.validated_data.get('pedido')
         
-        # 2. Valida se o pedido já está fechado antes de aceitar nova cotação
         if pedido.status not in ['CRIADO', 'COTACAO', 'REVISAO']:
             raise ValidationError("Não é possível adicionar cotações a este pedido.")
         
-        # 3. Salva a cotação no banco de dados (Cotação não tem campo solicitante!)
+        # 🚀 ATRIBUIÇÃO AUTOMÁTICA: O primeiro comprador que cotar, assume o pedido!
+        if not pedido.comprador:
+            pedido.comprador = self.request.user
+        
         serializer.save()
         
-        # 4. Atualiza o status do pedido para informar que já está a ser orçamentado
         if pedido.status != 'COTACAO':
             pedido.status = 'COTACAO'
-            pedido.save(update_fields=['status'])
+            
+        # Salva o pedido com o novo status e o novo comprador (se alterado)
+        pedido.save(update_fields=['status', 'comprador'])
+
 
 class AprovacaoViewSet(viewsets.GenericViewSet):
     permission_classes = [IsGerente]
@@ -100,20 +102,17 @@ class AprovacaoViewSet(viewsets.GenericViewSet):
             comentario=request.data.get('comentario', '')
         )
         
-        # Lógica de Service para atualizar status do pedido e notificar
         PedidoService.processar_aprovacao(pedido, cotacao_id)
-        
         return Response({"status": "Aprovado com sucesso e encaminhado para compra."})
     
     @action(detail=True, methods=['post'])
     def aprovar_parcialmente(self, request, pk=None):
         pedido = PedidoCompra.objects.get(pk=pk)
-        itens_aprovados = request.data.get('itens_aprovados', []) # Lista de IDs
+        itens_aprovados = request.data.get('itens_aprovados', [])
         
         if not itens_aprovados:
             return Response({"erro": "Informe os itens aprovados."}, status=400)
             
-        # Lógica: Cancela os itens não aprovados e avança o pedido
         pedido.itens.exclude(id__in=itens_aprovados).delete()
         pedido.status = 'COMPRADO'
         pedido.save()
@@ -126,7 +125,6 @@ class AprovacaoViewSet(viewsets.GenericViewSet):
 
     @action(detail=True, methods=['post'])
     def solicitar_revisao(self, request, pk=None):
-        # Retorna o pedido para o comprador buscar novos preços
         pedido = PedidoCompra.objects.get(pk=pk)
         pedido.status = 'REVISAO'
         pedido.save()
@@ -138,7 +136,6 @@ class RelatorioViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def compras_excel(self, request):
-        """Gera o relatório de Compras e Custos em Excel"""
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="relatorio_compras_{timezone.now().date()}.xlsx"'
         
@@ -146,10 +143,8 @@ class RelatorioViewSet(viewsets.ViewSet):
         ws = wb.active
         ws.title = "Relatório de Custos"
         
-        # Cabeçalhos
         ws.append(['Número Pedido', 'Setor', 'Centro de Custo', 'Status', 'Valor Total (R$)'])
         
-        # Dados
         cotacoes_vencedoras = Cotacao.objects.filter(vencedora=True).select_related('pedido__setor', 'pedido__centro_custo')
         for cotacao in cotacoes_vencedoras:
             ws.append([
@@ -165,7 +160,6 @@ class RelatorioViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def sla_pdf(self, request):
-        """Gera o relatório de SLAs em PDF"""
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="relatorio_sla_{timezone.now().date()}.pdf"'
         
@@ -178,7 +172,7 @@ class RelatorioViewSet(viewsets.ViewSet):
         for pedido in atrasados:
             p.drawString(100, y, f"Pedido: {pedido.numero} | Status: {pedido.status} | Venceu em: {pedido.sla_vencimento.strftime('%d/%m/%Y %H:%M')}")
             y -= 20
-            if y < 50: # Nova página
+            if y < 50: 
                 p.showPage()
                 y = 800
                 
@@ -196,21 +190,15 @@ class AnexoViewSet(viewsets.ModelViewSet):
         serializer.save(enviado_por=self.request.user)
 
 
-
 class ItemPedidoViewSet(viewsets.ModelViewSet):
-    """
-    Endpoint para gerir Itens separadamente (CRUD completo).
-    """
     queryset = ItemPedido.objects.all()
     serializer_class = ItemPedidoSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['pedido', 'codigo_erp', 'maquina_aplicacao']
 
+
 class DashboardViewSet(viewsets.ViewSet):
-    """
-    Endpoint para o Dashboard do Administrador e Gerente Geral.
-    """
     permission_classes = [IsGerente]
 
     @action(detail=False, methods=['get'])
@@ -222,7 +210,6 @@ class DashboardViewSet(viewsets.ViewSet):
             status__in=['CRIADO', 'COTACAO', 'APROVACAO']
         ).count()
         
-        # Custos totais agregados por compras já entregues
         total_gasto = Cotacao.objects.filter(
             vencedora=True, 
             pedido__status='ENTREGUE'
